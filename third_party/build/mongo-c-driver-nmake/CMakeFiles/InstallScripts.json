@@ -1,0 +1,11 @@
+{
+	"InstallScripts" : 
+	[
+		"E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake/cmake_install.cmake",
+		"E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake/src/common/cmake_install.cmake",
+		"E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake/src/libbson/cmake_install.cmake",
+		"E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake/src/libmongoc/cmake_install.cmake",
+		"E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake/src/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

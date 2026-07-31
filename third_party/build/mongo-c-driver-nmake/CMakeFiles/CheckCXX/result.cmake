@@ -1,0 +1,1 @@
+set(CMAKE_CXX_COMPILER "C:/Program Files/Microsoft Visual Studio/18/Insiders/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe")

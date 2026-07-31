@@ -1,0 +1,20 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+E:/u3d/MongoStandalone/third_party/build/mongo-cxx-driver-nmake-v3/src/bsoncxx/bsoncxx.rc
+winver.h
+-
+bsoncxx/config/version.hpp
+-
+
+E:/u3d/MongoStandalone/third_party/src/mongo-cxx-driver/src/bsoncxx/include/bsoncxx/v_noabi/bsoncxx/config/version.hpp
+bsoncxx/v1/config/version.hpp
+-
+
+src/bsoncxx/lib/bsoncxx/v1/config/version.hpp
+

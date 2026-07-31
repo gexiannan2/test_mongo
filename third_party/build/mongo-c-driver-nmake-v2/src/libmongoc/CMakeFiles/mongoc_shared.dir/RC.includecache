@@ -1,0 +1,16 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake-v2/src/libmongoc/libmongoc.rc
+winver.h
+-
+mongoc/mongoc-version.h
+-
+
+src/libmongoc/src/mongoc/mongoc-version.h
+

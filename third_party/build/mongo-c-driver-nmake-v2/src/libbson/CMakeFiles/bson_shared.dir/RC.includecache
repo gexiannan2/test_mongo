@@ -1,0 +1,16 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake-v2/src/libbson/libbson.rc
+winver.h
+-
+bson/version.h
+-
+
+src/libbson/src/bson/version.h
+
