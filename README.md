@@ -24,6 +24,18 @@ ctest --preset windows-vs2026-x64-release
 4.2 的 Visual Studio 2026 生成器使用的新解决方案格式，可直接在 Visual Studio
 2026 中打开，并以 `Release|x64` 构建。
 
+Linux x64 使用独立的依赖安装目录，避免与 Windows 的 DLL/LIB 混用：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake git libssl-dev libsasl2-dev
+chmod +x scripts/bootstrap_mongodb_linux.sh
+./scripts/bootstrap_mongodb_linux.sh
+cmake --preset linux-gcc-x64
+cmake --build --preset linux-gcc-x64-release
+ctest --preset linux-gcc-x64-release
+```
+
 默认连接：
 
 ```text
@@ -98,3 +110,6 @@ $env:MONGO_WAIT_QUEUE_TIMEOUT_MS = "200"
 `AsyncMongoDispatcher` 提供默认 12 个 MongoDB 工作线程、按 `playerId` 固定路由、
 有界队列与背压拒绝。业务线程投递不可变玩家快照后即可继续执行；MongoDB 工作线程
 再同步落库。使用方式与可靠性边界见 [ASYNC_MONGO_DISPATCHER.md](docs/ASYNC_MONGO_DISPATCHER.md)。
+
+内网游戏服直接编译本模块源码、使用 `PlayerMongoStorage` 异步落地玩家快照的最小接入方式见
+[SVC_GAME3D_INTEGRATION.md](docs/SVC_GAME3D_INTEGRATION.md)。

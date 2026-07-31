@@ -30,10 +30,9 @@ AsyncMongoDispatcher::AsyncMongoDispatcher(
     MongoConfig config,
     AsyncMongoDispatcherOptions options,
     ErrorHandler errorHandler)
-    : config_(std::move(config)),
-      options_(options),
+    : options_(options),
       errorHandler_(std::move(errorHandler)),
-      client_(std::make_unique<MongoClient>(config_))
+      client_(std::make_unique<MongoClient>(std::move(config)))
 {
     if (options_.workerCount == 0)
     {

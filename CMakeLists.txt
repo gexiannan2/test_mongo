@@ -17,6 +17,7 @@ add_library(mongo_standalone
     src/AsyncMongoDispatcher.cpp
     src/MongoClient.cpp
     src/MongoConfig.cpp
+    src/PlayerMongoStorage.cpp
 )
 target_include_directories(mongo_standalone PUBLIC include)
 target_link_libraries(mongo_standalone PUBLIC mongo::mongocxx_shared)

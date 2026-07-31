@@ -66,7 +66,6 @@ private:
     void RunWorker(Worker& worker) noexcept;
     std::size_t WorkerIndex(std::int64_t playerId) const noexcept;
 
-    MongoConfig config_;
     AsyncMongoDispatcherOptions options_;
     ErrorHandler errorHandler_;
     std::unique_ptr<MongoClient> client_;

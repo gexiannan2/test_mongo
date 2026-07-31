@@ -12,6 +12,22 @@
         "CMAKE_PREFIX_PATH": "${sourceDir}/third_party/mongodb",
         "BUILD_TESTING": "ON"
       }
+    },
+    {
+      "name": "linux-gcc-x64",
+      "displayName": "Linux GCC x64",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/linux-gcc-x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/third_party/mongodb/linux-x64",
+        "BUILD_TESTING": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -24,6 +40,10 @@
       "name": "windows-vs2026-x64-release",
       "configurePreset": "windows-vs2026-x64",
       "configuration": "Release"
+    },
+    {
+      "name": "linux-gcc-x64-release",
+      "configurePreset": "linux-gcc-x64"
     }
   ],
   "testPresets": [
@@ -40,6 +60,16 @@
     {
       "name": "windows-vs2026-x64-release",
       "configurePreset": "windows-vs2026-x64",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 60
+      }
+    },
+    {
+      "name": "linux-gcc-x64-release",
+      "configurePreset": "linux-gcc-x64",
       "output": {
         "outputOnFailure": true
       },

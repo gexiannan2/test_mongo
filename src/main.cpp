@@ -82,6 +82,11 @@ int main(int argc, char* argv[])
     try
     {
         const std::string command = argc > 1 ? argv[1] : "write-read";
+        if (command == "write-read")
+        {
+            return WriteRead();
+        }
+
         auto config = mongo_standalone::MongoConfig::FromEnvironment();
         mongo_standalone::MongoClient client(config);
 
@@ -91,11 +96,6 @@ int main(int argc, char* argv[])
             std::cout << "MongoDB ping passed\n";
             return 0;
         }
-        if (command == "write-read")
-        {
-            return WriteRead();
-        }
-
         std::cerr << "Usage: mongo_demo [ping|write-read]\n";
         return 2;
     }
@@ -105,4 +105,3 @@ int main(int argc, char* argv[])
         return 1;
     }
 }
-

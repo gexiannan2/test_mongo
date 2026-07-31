@@ -64,8 +64,7 @@ class MongoClient::RequestGuard final
 {
 public:
     RequestGuard(MongoClient& owner, const char* operation)
-        : owner_(&owner),
-          operation_(operation)
+        : owner_(&owner)
     {
         owner_->metrics_.submitted.fetch_add(1, std::memory_order_relaxed);
         if (!owner_->requestLimiter_.try_acquire_for(owner_->config_.waitQueueTimeout))
@@ -73,7 +72,7 @@ public:
             owner_->metrics_.rejected.fetch_add(1, std::memory_order_relaxed);
             owner_ = nullptr;
             throw MongoError(
-                operation_, 0,
+                operation, 0,
                 "MongoDB 客户端背压已触发：并发请求上限或等待超时已达到");
         }
 
@@ -127,7 +126,6 @@ public:
 
 private:
     MongoClient* owner_ = nullptr;
-    const char* operation_ = nullptr;
     std::optional<mongocxx::pool::entry> entry_;
     bool permitHeld_ = false;
     bool succeeded_ = false;
