@@ -1,2 +1,0 @@
-E:/u3d/MongoStandalone/third_party/build/mongo-cxx-driver-nmake-v3/src/bsoncxx/lib/bsoncxx/v_noabi/bsoncxx/config/config.hpp
-E:/u3d/MongoStandalone/third_party/build/mongo-cxx-driver-nmake-v3/src/bsoncxx/lib/bsoncxx/v1/config/config.hpp

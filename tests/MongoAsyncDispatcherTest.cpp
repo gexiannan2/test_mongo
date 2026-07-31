@@ -1,6 +1,7 @@
 #include "mongo_standalone/AsyncMongoDispatcher.h"
 #include "mongo_standalone/MongoClient.h"
 #include "mongo_standalone/MongoConfig.h"
+#include "mongo_standalone/PlayerMongoStorage.h"
 
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/builder/basic/kvp.hpp>
@@ -190,6 +191,52 @@ void RunBackpressureTest()
             "背压测试拒绝或失败计数不正确");
 }
 
+void RunPlayerStorageTest()
+{
+    auto config = mongo_standalone::MongoConfig::FromEnvironment();
+    const std::int64_t playerId = static_cast<std::int64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    mongo_standalone::PlayerMongoStorage storage(
+        config,
+        {
+            .collection = "player_persistence_cases",
+            .dispatcher = {.workerCount = 2, .maxQueuedTasksPerWorker = 16},
+        });
+
+    mongo_standalone::PlayerSnapshot snapshot;
+    snapshot.id = playerId;
+    snapshot.sequence = 7;
+    snapshot.name = "player_async_save";
+    snapshot.level = 50;
+    snapshot.position = {.mapId = 101, .x = 125.5, .y = 6.8, .z = 78.2};
+    snapshot.attributes = {.hp = 5000, .mp = 2000, .attack = 350};
+    snapshot.skills = {{.skillId = 1001, .level = 5}};
+    snapshot.autoPick = true;
+
+    Require(storage.PostSave(snapshot), "玩家快照投递失败");
+    Require(storage.WaitForIdle(std::chrono::seconds(10)), "玩家快照没有在超时前落库");
+    storage.Stop();
+
+    mongo_standalone::MongoClient verifier(config);
+    document filter;
+    filter.append(kvp("_id", playerId));
+    const auto player = verifier.FindOne("player_persistence_cases", filter.view());
+    Require(player.has_value(), "玩家异步快照文档不存在");
+    const auto view = player->view();
+    Require(view["name"].get_string().value == "player_async_save",
+            "玩家快照名称不正确");
+    Require(view["last_sequence"].get_int64().value == 7,
+            "玩家快照序号不正确");
+    Require(view["position"].get_document().view()["map_id"].get_int32().value == 101,
+            "玩家快照地图不正确");
+    Require(view["attributes"].get_document().view()["attack"].get_int32().value == 350,
+            "玩家快照属性不正确");
+    Require(view["settings"].get_document().view()["auto_pick"].get_bool().value,
+            "玩家快照设置不正确");
+    Require(verifier.DeleteOne("player_persistence_cases", filter.view()).deletedCount == 1,
+            "玩家快照测试数据清理失败");
+}
+
 } // namespace
 
 int main()
@@ -198,6 +245,7 @@ int main()
     {
         RunAffinityAndPersistenceTest();
         RunBackpressureTest();
+        RunPlayerStorageTest();
         std::cout << "MongoDB async dispatcher integration test passed\n";
         return 0;
     }

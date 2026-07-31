@@ -1,2 +1,0 @@
-E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake-v2/CMakeFiles/CheckCXX/CMakeFiles/edit_cache.dir
-E:/u3d/MongoStandalone/third_party/build/mongo-c-driver-nmake-v2/CMakeFiles/CheckCXX/CMakeFiles/rebuild_cache.dir
