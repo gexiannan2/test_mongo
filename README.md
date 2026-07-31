@@ -81,3 +81,9 @@ $env:MONGO_WAIT_QUEUE_TIMEOUT_MS = "200"
 生产环境必须使用三节点副本集、认证、TLS、`majority + journal` 写关注。设置
 `MONGO_ENV=production` 后，程序会拒绝不满足这些条件的配置。完整部署模板、环境变量
 和 10～30 分钟压测命令见 [PRODUCTION.md](docs/PRODUCTION.md)。
+
+## 玩家异步投递
+
+`AsyncMongoDispatcher` 提供默认 12 个 MongoDB 工作线程、按 `playerId` 固定路由、
+有界队列与背压拒绝。业务线程投递不可变玩家快照后即可继续执行；MongoDB 工作线程
+再同步落库。使用方式与可靠性边界见 [ASYNC_MONGO_DISPATCHER.md](docs/ASYNC_MONGO_DISPATCHER.md)。

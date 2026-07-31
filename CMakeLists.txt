@@ -14,6 +14,7 @@ find_package(mongocxx 4.4 CONFIG REQUIRED)
 find_package(bsoncxx 4.4 CONFIG REQUIRED)
 
 add_library(mongo_standalone
+    src/AsyncMongoDispatcher.cpp
     src/MongoClient.cpp
     src/MongoConfig.cpp
 )
