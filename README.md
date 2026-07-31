@@ -68,6 +68,17 @@ $env:MONGO_WAIT_QUEUE_TIMEOUT_MS = "200"
 .\build\vs2026-x64-d\tests\Release\mongo_player_benchmark.exe --mode write --qps 100000 --duration 10 --workers 16
 ```
 
+异步投递模式会让业务模拟线程把闭包投递到固定的 MongoDB 工作线程：
+
+```powershell
+.\build\vs2026-x64-d\tests\Release\mongo_player_benchmark.exe `
+  --dispatch async --mode all --qps 10000 --duration 10 `
+  --workers 4 --mongo-workers 12 --queue-per-worker 4096 --players 100000
+```
+
+同步/异步的分档命令、CSV 字段、验收标准、数据影响和服务端指标采集见
+[PERFORMANCE_TESTING.md](docs/PERFORMANCE_TESTING.md)。
+
 输出中的“实际 QPS”低于目标值，说明当前客户端、网络或 MongoDB 无法在限定时间
 完成请求；P95/P99 延迟突增可用于定位排队、磁盘写入确认或服务端负载导致的长尾。
 性能数据必须使用 `Release|x64`，不要使用 Debug 配置。
