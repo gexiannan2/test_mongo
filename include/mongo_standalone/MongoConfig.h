@@ -1,17 +1,29 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <string>
 
 namespace mongo_standalone {
 
 struct MongoConfig
 {
+    // 本地开发默认连接；生产环境必须由 MONGO_URI 提供副本集 URI。
     std::string uri = "mongodb://127.0.0.1:27017/?directConnection=true";
     std::string database = "dbserver_mongo_test";
-    std::chrono::milliseconds serverSelectionTimeout{3000};
+    std::chrono::milliseconds serverSelectionTimeout{5000};
     std::chrono::milliseconds connectTimeout{3000};
-    std::chrono::milliseconds socketTimeout{3000};
+    std::chrono::milliseconds socketTimeout{5000};
+    std::chrono::milliseconds waitQueueTimeout{200};
+    std::chrono::milliseconds writeConcernTimeout{5000};
+    std::size_t maxPoolSize = 32;
+    std::size_t minPoolSize = 4;
+    std::size_t maxInFlightRequests = 64;
+    std::string writeConcern = "1";
+    bool retryWrites = true;
+    bool journal = false;
+    bool tls = false;
+    bool production = false;
 
     static MongoConfig FromEnvironment();
     void Validate() const;
@@ -19,4 +31,3 @@ struct MongoConfig
 };
 
 } // namespace mongo_standalone
-

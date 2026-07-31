@@ -5,11 +5,15 @@
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/builder/basic/kvp.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <exception>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
 
@@ -104,6 +108,76 @@ void RunCrudTest()
     Require(client.Count("crud_cases", batchFilter.view()) == 0, "测试数据清理失败");
 }
 
+void RunConcurrentPoolTest()
+{
+    auto config = mongo_standalone::MongoConfig::FromEnvironment();
+    config.minPoolSize = 1;
+    config.maxPoolSize = 8;
+    config.maxInFlightRequests = 8;
+    config.waitQueueTimeout = std::chrono::milliseconds(3000);
+    mongo_standalone::MongoClient client(config);
+    client.Ping();
+
+    const std::string batch = BatchId();
+    constexpr int kWorkers = 8;
+    constexpr int kInsertsPerWorker = 20;
+    std::exception_ptr firstError;
+    std::mutex errorMutex;
+    std::vector<std::thread> workers;
+    workers.reserve(kWorkers);
+
+    for (int worker = 0; worker < kWorkers; ++worker)
+    {
+        workers.emplace_back([&, worker]() {
+            try
+            {
+                for (int index = 0; index < kInsertsPerWorker; ++index)
+                {
+                    document value;
+                    value.append(
+                        kvp("_id", batch + "_" + std::to_string(worker) + "_" +
+                            std::to_string(index)),
+                        kvp("batch", batch),
+                        kvp("worker", worker),
+                        kvp("index", index));
+                    Require(client.InsertOne("crud_concurrent_cases", value.view()),
+                            "并发 insert_one 失败");
+                }
+            }
+            catch (...)
+            {
+                std::lock_guard<std::mutex> lock(errorMutex);
+                if (!firstError)
+                {
+                    firstError = std::current_exception();
+                }
+            }
+        });
+    }
+    for (auto& worker : workers)
+    {
+        worker.join();
+    }
+    if (firstError)
+    {
+        std::rethrow_exception(firstError);
+    }
+
+    document batchFilter;
+    batchFilter.append(kvp("batch", batch));
+    Require(client.Count("crud_concurrent_cases", batchFilter.view()) ==
+                kWorkers * kInsertsPerWorker,
+            "连接池并发插入数量不正确");
+    const auto metrics = client.Metrics();
+    Require(metrics.failed == 0 && metrics.rejected == 0 && metrics.active == 0,
+            "连接池并发请求出现失败、背压拒绝或泄漏");
+    Require(metrics.completed >= static_cast<std::uint64_t>(kWorkers * kInsertsPerWorker),
+            "连接池并发请求完成计数不正确");
+    Require(client.DeleteMany("crud_concurrent_cases", batchFilter.view()).deletedCount ==
+                kWorkers * kInsertsPerWorker,
+            "连接池并发测试数据清理失败");
+}
+
 } // namespace
 
 int main()
@@ -111,6 +185,7 @@ int main()
     try
     {
         RunCrudTest();
+        RunConcurrentPoolTest();
         std::cout << "MongoDB CRUD integration test passed\n";
         return 0;
     }
@@ -120,4 +195,3 @@ int main()
         return 1;
     }
 }
-

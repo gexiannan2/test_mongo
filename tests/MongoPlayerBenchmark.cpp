@@ -1,3 +1,4 @@
+#include "mongo_standalone/MongoClient.h"
 #include "mongo_standalone/MongoConfig.h"
 
 #include <bsoncxx/builder/basic/array.hpp>
@@ -15,6 +16,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iterator>
 #include <iostream>
@@ -27,6 +30,9 @@
 #include <vector>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 #endif
 
@@ -47,17 +53,21 @@ enum class BenchmarkMode {
 struct Options {
     std::vector<std::uint64_t> qps{1000, 10000, 100000};
     std::chrono::seconds duration{10};
+    std::chrono::seconds warmup{0};
     std::size_t workers = std::max<std::size_t>(
         2, std::min<std::size_t>(16, std::thread::hardware_concurrency()));
     std::int64_t playerCount = 100000;
     bool runRead = true;
     bool runWrite = true;
+    std::string reportPath;
 };
 
 struct Metrics {
     std::uint64_t targetOperations = 0;
     std::uint64_t completedOperations = 0;
     std::uint64_t failedOperations = 0;
+    std::uint64_t notStartedOperations = 0;
+    std::uint64_t latencySamples = 0;
     double elapsedSeconds = 0.0;
     std::vector<std::uint64_t> latenciesUs;
     std::string firstError;
@@ -110,6 +120,10 @@ Options ParseOptions(int argc, char* argv[])
         {
             options.duration = std::chrono::seconds(ParsePositiveInt64(requireValue(), "--duration"));
         }
+        else if (argument == "--warmup")
+        {
+            options.warmup = std::chrono::seconds(ParsePositiveInt64(requireValue(), "--warmup"));
+        }
         else if (argument == "--workers")
         {
             options.workers = static_cast<std::size_t>(
@@ -142,10 +156,15 @@ Options ParseOptions(int argc, char* argv[])
                 throw std::invalid_argument("--mode 只能是 read、write 或 all");
             }
         }
+        else if (argument == "--report")
+        {
+            options.reportPath = requireValue();
+        }
         else if (argument == "--help" || argument == "-h")
         {
             std::cout << "用法：mongo_player_benchmark [--mode read|write|all] "
-                         "[--qps N] [--duration 秒] [--workers N] [--players N]\n"
+                         "[--qps N] [--duration 秒] [--workers N] [--players N] "
+                         "[--warmup 秒] [--report 结果.csv]\n"
                          "未指定 --qps 时依次执行 1000、10000、100000 QPS。\n";
             std::exit(0);
         }
@@ -273,11 +292,16 @@ std::uint64_t PercentileUs(std::vector<std::uint64_t> values, double percentile)
     return values[std::min(position, values.size() - 1)];
 }
 
-Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& config,
+Metrics RunScenario(mongo_standalone::MongoClient& client,
                     const Options& options, BenchmarkMode mode, std::uint64_t targetQps)
 {
     Metrics metrics;
     metrics.targetOperations = targetQps * static_cast<std::uint64_t>(options.duration.count());
+    constexpr std::uint64_t kMaxLatencySamples = 1000000;
+    const std::uint64_t latencySamplePeriod = std::max<std::uint64_t>(
+        1, (metrics.targetOperations + kMaxLatencySamples - 1) / kMaxLatencySamples);
+    const std::uint64_t expectedLatencySamples =
+        (metrics.targetOperations + latencySamplePeriod - 1) / latencySamplePeriod;
     std::atomic<std::uint64_t> nextOperation{0};
     std::atomic<std::uint64_t> completed{0};
     std::atomic<std::uint64_t> failed{0};
@@ -285,14 +309,14 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
     std::vector<std::thread> threads;
     std::vector<std::vector<std::uint64_t>> workerLatencies(options.workers);
     const auto launchAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
+    const auto finishAt = launchAt + options.duration;
 
     for (std::size_t worker = 0; worker < options.workers; ++worker)
     {
         threads.emplace_back([&, worker]() {
-            auto client = pool.acquire();
-            auto collection = (*client)[config.database][kCollection];
             auto& latencies = workerLatencies[worker];
-            latencies.reserve(static_cast<std::size_t>(metrics.targetOperations / options.workers + 1));
+            latencies.reserve(static_cast<std::size_t>(
+                expectedLatencySamples / options.workers + 1));
 
             while (true)
             {
@@ -304,7 +328,15 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
 
                 const auto dueAt = launchAt + std::chrono::nanoseconds(
                     (sequence * 1000000000ULL) / targetQps);
+                if (dueAt >= finishAt)
+                {
+                    return;
+                }
                 std::this_thread::sleep_until(dueAt);
+                if (std::chrono::steady_clock::now() >= finishAt)
+                {
+                    return;
+                }
                 const auto begin = std::chrono::steady_clock::now();
                 const std::int64_t playerId =
                     static_cast<std::int64_t>(sequence % static_cast<std::uint64_t>(options.playerCount)) + 1;
@@ -315,7 +347,7 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
                     filter.append(kvp("_id", playerId));
                     if (mode == BenchmarkMode::kRead)
                     {
-                        const auto result = collection.find_one(filter.view());
+                        const auto result = client.FindOne(kCollection, filter.view());
                         if (!result)
                         {
                             throw std::runtime_error("未找到预置玩家数据");
@@ -338,8 +370,9 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
                             kvp("last_sequence", static_cast<std::int64_t>(sequence)));
                         document update;
                         update.append(kvp("$set", setFields.extract()));
-                        const auto result = collection.update_one(filter.view(), update.view());
-                        if (!result || result->matched_count() != 1)
+                        const auto result = client.UpdateOne(
+                            kCollection, filter.view(), update.view());
+                        if (result.matchedCount != 1)
                         {
                             throw std::runtime_error("写入未匹配预置玩家数据");
                         }
@@ -358,7 +391,11 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
 
                 const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - begin).count();
-                latencies.push_back(static_cast<std::uint64_t>(std::max<std::int64_t>(0, elapsedUs)));
+                if (sequence % latencySamplePeriod == 0)
+                {
+                    latencies.push_back(
+                        static_cast<std::uint64_t>(std::max<std::int64_t>(0, elapsedUs)));
+                }
             }
         });
     }
@@ -372,6 +409,9 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
         std::chrono::steady_clock::now() - launchAt).count();
     metrics.completedOperations = completed.load(std::memory_order_relaxed);
     metrics.failedOperations = failed.load(std::memory_order_relaxed);
+    metrics.notStartedOperations = metrics.targetOperations -
+        std::min(metrics.targetOperations,
+                 metrics.completedOperations + metrics.failedOperations);
     for (auto& latencies : workerLatencies)
     {
         metrics.latenciesUs.insert(
@@ -379,7 +419,56 @@ Metrics RunScenario(mongocxx::pool& pool, const mongo_standalone::MongoConfig& c
             std::make_move_iterator(latencies.begin()),
             std::make_move_iterator(latencies.end()));
     }
+    metrics.latencySamples = metrics.latenciesUs.size();
     return metrics;
+}
+
+void WriteMetricsCsv(const std::string& path, BenchmarkMode mode,
+                     std::uint64_t targetQps, const Metrics& metrics)
+{
+    const bool writeHeader = !std::filesystem::exists(path) ||
+        std::filesystem::file_size(path) == 0;
+    std::ofstream output(path, std::ios::app);
+    if (!output)
+    {
+        throw std::runtime_error("无法写入基准测试报告：" + path);
+    }
+    if (writeHeader)
+    {
+        output << "mode,target_qps,completed,failed,not_started,elapsed_seconds,actual_qps,"
+                  "latency_samples,p50_us,p95_us,p99_us,max_us\n";
+    }
+    const auto total = metrics.completedOperations + metrics.failedOperations;
+    const double actualQps = metrics.elapsedSeconds > 0.0
+        ? static_cast<double>(total) / metrics.elapsedSeconds
+        : 0.0;
+    output << ModeName(mode) << ',' << targetQps << ',' << metrics.completedOperations
+           << ',' << metrics.failedOperations << ',' << metrics.notStartedOperations << ','
+           << std::fixed << std::setprecision(3)
+           << metrics.elapsedSeconds << ',' << actualQps << ','
+           << metrics.latencySamples << ','
+           << PercentileUs(metrics.latenciesUs, 0.50) << ','
+           << PercentileUs(metrics.latenciesUs, 0.95) << ','
+           << PercentileUs(metrics.latenciesUs, 0.99) << ','
+           << PercentileUs(metrics.latenciesUs, 1.0) << '\n';
+}
+
+void RunWarmupIfNeeded(mongo_standalone::MongoClient& client, const Options& options,
+                       BenchmarkMode mode, std::uint64_t targetQps)
+{
+    if (options.warmup.count() == 0)
+    {
+        return;
+    }
+    Options warmupOptions = options;
+    warmupOptions.duration = options.warmup;
+    std::cout << "\n[" << ModeName(mode) << "] 预热=" << options.warmup.count()
+              << " 秒，目标=" << targetQps << " QPS\n";
+    const auto metrics = RunScenario(client, warmupOptions, mode, targetQps);
+    if (metrics.failedOperations != 0)
+    {
+        throw std::runtime_error("预热期间出现请求失败：" + metrics.firstError);
+    }
 }
 
 void PrintMetrics(BenchmarkMode mode, std::uint64_t targetQps, const Metrics& metrics)
@@ -397,11 +486,13 @@ void PrintMetrics(BenchmarkMode mode, std::uint64_t targetQps, const Metrics& me
               << "，实际=" << std::fixed << std::setprecision(1) << actualQps << " QPS"
               << "，成功=" << metrics.completedOperations
               << "，失败=" << metrics.failedOperations
+              << "，未启动=" << metrics.notStartedOperations
               << "，成功率=" << std::setprecision(2) << successRate << "%\n"
               << "延迟(us)：P50=" << PercentileUs(metrics.latenciesUs, 0.50)
               << "，P95=" << PercentileUs(metrics.latenciesUs, 0.95)
               << "，P99=" << PercentileUs(metrics.latenciesUs, 0.99)
-              << "，最大=" << PercentileUs(metrics.latenciesUs, 1.0) << '\n';
+              << "，最大=" << PercentileUs(metrics.latenciesUs, 1.0)
+              << "，样本=" << metrics.latencySamples << '\n';
     if (!metrics.firstError.empty())
     {
         std::cout << "首个错误：" << metrics.firstError << '\n';
@@ -421,31 +512,53 @@ int main(int argc, char* argv[])
         const Options options = ParseOptions(argc, argv);
         const auto config = mongo_standalone::MongoConfig::FromEnvironment();
         mongocxx::instance instance;
-        mongocxx::pool pool{mongocxx::uri{config.EffectiveUri()}};
+        mongocxx::pool seedPool{mongocxx::uri{config.EffectiveUri()}};
 
-        auto client = pool.acquire();
-        (*client)[config.database].run_command(make_document(kvp("ping", 1)).view());
-        client = nullptr;
+        auto seedClient = seedPool.acquire();
+        (*seedClient)[config.database].run_command(make_document(kvp("ping", 1)).view());
+        seedClient = nullptr;
 
         std::cout << "MongoDB 玩家读写基准测试\n"
                   << "数据库=" << config.database << "，集合=" << kCollection
                   << "，并发=" << options.workers << "，时长=" << options.duration.count()
-                  << " 秒，玩家数=" << options.playerCount << "\n";
-        SeedPlayers(pool, config, options);
+                  << " 秒，玩家数=" << options.playerCount
+                  << "，连接池=" << config.minPoolSize << '-' << config.maxPoolSize
+                  << "，请求上限=" << config.maxInFlightRequests << "\n";
+        SeedPlayers(seedPool, config, options);
+        mongo_standalone::MongoClient client(config);
+        client.Ping();
 
         for (const auto targetQps : options.qps)
         {
             if (options.runWrite)
             {
-                PrintMetrics(BenchmarkMode::kWrite, targetQps,
-                             RunScenario(pool, config, options, BenchmarkMode::kWrite, targetQps));
+                RunWarmupIfNeeded(client, options, BenchmarkMode::kWrite, targetQps);
+                const auto metrics = RunScenario(
+                    client, options, BenchmarkMode::kWrite, targetQps);
+                PrintMetrics(BenchmarkMode::kWrite, targetQps, metrics);
+                if (!options.reportPath.empty())
+                {
+                    WriteMetricsCsv(options.reportPath, BenchmarkMode::kWrite, targetQps, metrics);
+                }
             }
             if (options.runRead)
             {
-                PrintMetrics(BenchmarkMode::kRead, targetQps,
-                             RunScenario(pool, config, options, BenchmarkMode::kRead, targetQps));
+                RunWarmupIfNeeded(client, options, BenchmarkMode::kRead, targetQps);
+                const auto metrics = RunScenario(
+                    client, options, BenchmarkMode::kRead, targetQps);
+                PrintMetrics(BenchmarkMode::kRead, targetQps, metrics);
+                if (!options.reportPath.empty())
+                {
+                    WriteMetricsCsv(options.reportPath, BenchmarkMode::kRead, targetQps, metrics);
+                }
             }
         }
+        const auto clientMetrics = client.Metrics();
+        std::cout << "\n客户端指标：提交=" << clientMetrics.submitted
+                  << "，完成=" << clientMetrics.completed
+                  << "，失败=" << clientMetrics.failed
+                  << "，背压拒绝=" << clientMetrics.rejected
+                  << "，活动请求=" << clientMetrics.active << '\n';
         return 0;
     }
     catch (const std::exception& error)
