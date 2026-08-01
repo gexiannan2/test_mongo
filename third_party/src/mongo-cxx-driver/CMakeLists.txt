@@ -253,6 +253,7 @@ set(BUILD_SOURCE_DIR ${CMAKE_BINARY_DIR})
 
 include(MakeDistFiles)
 
+if(NOT MONGOCXX_MINIMAL_BUILD)
 add_custom_target(hugo_dir
     COMMAND ${CMAKE_COMMAND} -E make_directory hugo
 )
@@ -321,6 +322,7 @@ add_custom_target(format-lint
 add_custom_target(docs
     DEPENDS hugo doxygen-current
 )
+endif()
 
 set(THIRD_PARTY_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/third_party)
 set(DATA_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data)

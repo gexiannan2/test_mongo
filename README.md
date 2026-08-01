@@ -14,6 +14,18 @@ MongoDB 的 DLL 或 SO。
 - mongo-c-driver 2.3.3
 - C++20
 
+第三方目录只保留可复现构建所需的固定源码快照：
+
+```text
+third_party/
+└── src/
+    ├── mongo-c-driver/      2.3.3
+    └── mongo-cxx-driver/    r4.4.1
+```
+
+版本来源与提交信息见 `third_party/README.md`。仓库不保存驱动的预编译安装树或
+驱动仓库自身的 Git 元数据。
+
 ## 构建
 
 ```powershell
@@ -38,6 +50,9 @@ cmake --preset linux-gcc-x64
 cmake --build --preset linux-gcc-x64-release
 ctest --preset linux-gcc-x64-release
 ```
+
+`ctest` 是 MongoDB 集成测试，执行前需确保 `127.0.0.1:27017` 上已有可连接的
+MongoDB 服务。仅验证离线编译时执行前两条命令即可。
 
 默认连接：
 
