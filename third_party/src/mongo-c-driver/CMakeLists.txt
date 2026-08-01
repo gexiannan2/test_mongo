@@ -32,6 +32,10 @@ include (VerifyHeaders)
 
 # Subcomponents:
 mongo_bool_setting(ENABLE_MONGOC "Enable the build of libmongoc libraries (The MongoDB C database driver)")
+option(MONGOC_MINIMAL_BUILD
+   "Build only libbson/libmongoc targets, without aggregate test/example or packaging targets."
+   OFF
+)
 mongo_bool_setting(
    USE_SYSTEM_LIBBSON [[Use an existing libbson library (via find_package()) instead of building one from source]]
    DEFAULT VALUE OFF
@@ -392,8 +396,10 @@ if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
 endif ()
 
 # Convenience targets to build all tests or all examples.
-add_custom_target(mongo_c_driver_tests)
-add_custom_target(mongo_c_driver_examples)
+if (NOT MONGOC_MINIMAL_BUILD)
+   add_custom_target(mongo_c_driver_tests)
+   add_custom_target(mongo_c_driver_examples)
+endif ()
 
 add_subdirectory (src/common)
 
@@ -414,7 +420,9 @@ if (ENABLE_MONGOC)
 
    set (CPACK_RESOURCE_FILE_LICENSE "${mongo-c-driver_SOURCE_DIR}/COPYING")
 
-   include (CPack)
+   if (NOT MONGOC_MINIMAL_BUILD)
+      include (CPack)
+   endif ()
 
    # Ensure the default behavior: don't ignore RPATH settings.
    set (CMAKE_SKIP_BUILD_RPATH OFF)

@@ -22,7 +22,10 @@ struct MongoConfig
     std::string writeConcern = "1";
     bool retryWrites = true;
     bool journal = false;
+    // 内网默认不使用 TLS；仅在部署边界明确要求时设置为 true。
     bool tls = false;
+    // 由部署策略决定是否强制 TLS，而不是由生产环境标签隐式决定。
+    bool requireTls = false;
     bool production = false;
 
     static MongoConfig FromEnvironment();

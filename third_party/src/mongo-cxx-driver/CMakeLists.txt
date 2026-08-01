@@ -327,8 +327,12 @@ set(DATA_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data)
 
 option(ENABLE_TESTS "Enable building test targets." OFF)
 option(ENABLE_MACRO_GUARD_TESTS "When ENABLE_TESTS=ON, enable macro guard test targets." OFF)
+option(MONGOCXX_MINIMAL_BUILD
+    "Build only bsoncxx/mongocxx library targets, without examples, docs, packaging, or dist targets."
+    OFF
+)
 
-if(BUILD_TESTING AND NOT ENABLE_TESTS)
+if(BUILD_TESTING AND NOT ENABLE_TESTS AND NOT MONGOCXX_MINIMAL_BUILD)
     message(WARNING "BUILD_TESTING is enabled without also setting ENABLE_TESTS. Set ENABLE_TESTS=ON to building test targets.")
 endif()
 
@@ -340,23 +344,24 @@ include(FetchMongoC)
 
 add_subdirectory(src)
 
-add_subdirectory(examples EXCLUDE_FROM_ALL)
+if(NOT MONGOCXX_MINIMAL_BUILD)
+    add_subdirectory(examples EXCLUDE_FROM_ALL)
 
-add_subdirectory(benchmark EXCLUDE_FROM_ALL)
+    add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
-# Implement 'dist' target
-#
-# CMake does not implement anything like 'dist' from autotools.
-# This implementation is based on the one in GnuCash.
-add_subdirectory(cmake)
-add_subdirectory(data)
-add_subdirectory(docs)
-add_subdirectory(etc)
+    # Implement 'dist' target
+    #
+    # CMake does not implement anything like 'dist' from autotools.
+    # This implementation is based on the one in GnuCash.
+    add_subdirectory(cmake)
+    add_subdirectory(data)
+    add_subdirectory(docs)
+    add_subdirectory(etc)
 
-set(PACKAGE_PREFIX "mongo-cxx-driver-r${BUILD_VERSION}")
-set(DIST_FILE "${PACKAGE_PREFIX}.tar.gz")
+    set(PACKAGE_PREFIX "mongo-cxx-driver-r${BUILD_VERSION}")
+    set(DIST_FILE "${PACKAGE_PREFIX}.tar.gz")
 
-set(top_DIST_local
+    set(top_DIST_local
     CMakeLists.txt
     CONTRIBUTING.md
     CREDITS.json
@@ -368,11 +373,11 @@ set(top_DIST_local
 
     # This sub-directory is added later, so manually include here
     generate_uninstall/CMakeLists.txt
-)
+    )
 
-set_local_dist(top_DIST ${top_DIST_local})
+    set_local_dist(top_DIST ${top_DIST_local})
 
-set(ALL_DIST
+    set(ALL_DIST
     ${top_DIST}
     ${benchmark_DIST}
     ${cmake_DIST}
@@ -381,18 +386,18 @@ set(ALL_DIST
     ${etc_DIST}
     ${examples_DIST}
     ${src_DIST}
-)
+    )
 
-# Write a dist manifest
-string(REPLACE ";" "\n" ALL_DIST_LINES "${ALL_DIST}")
-file(WRITE ${CMAKE_BINARY_DIR}/dist_manifest.txt ${ALL_DIST_LINES})
+    # Write a dist manifest
+    string(REPLACE ";" "\n" ALL_DIST_LINES "${ALL_DIST}")
+    file(WRITE ${CMAKE_BINARY_DIR}/dist_manifest.txt ${ALL_DIST_LINES})
 
-install(FILES LICENSE README.md THIRD-PARTY-NOTICES
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/mongo-cxx-driver
-)
+    install(FILES LICENSE README.md THIRD-PARTY-NOTICES
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/mongo-cxx-driver
+    )
 
 # This is the command that produces the distribution tarball
-add_custom_command(OUTPUT ${DIST_FILE}
+    add_custom_command(OUTPUT ${DIST_FILE}
     COMMAND ${CMAKE_COMMAND}
         -D "CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/make_dist"
         -D "PACKAGE_PREFIX=${PACKAGE_PREFIX}"
@@ -404,50 +409,51 @@ add_custom_command(OUTPUT ${DIST_FILE}
 
     DEPENDS
         ${ALL_DIST} ${dist_generated_depends}
-)
-
-if(NOT(TARGET dist OR TARGET distcheck))
-    add_custom_target(dist DEPENDS ${DIST_FILE})
-
-    # Ensure distcheck inherits polyfill library selection.
-    set(polyfill_flags "")
-
-    if(NOT "${CMAKE_CXX_STANDARD}" STREQUAL "")
-        list(APPEND polyfill_flags "-DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}")
-    endif()
-
-    if(NOT "${BSONCXX_POLY_USE_IMPLS}" STREQUAL "")
-        list(APPEND polyfill_flags "-DBSONCXX_POLY_USE_IMPLS=${BSONCXX_POLY_USE_IMPLS}")
-    endif()
-
-    if(NOT "${BSONCXX_POLY_USE_STD}" STREQUAL "")
-        list(APPEND polyfill_flags "-DBSONCXX_POLY_USE_STD=${BSONCXX_POLY_USE_STD}")
-    endif()
-
-    add_custom_target(distcheck DEPENDS dist
-        COMMAND ${CMAKE_COMMAND}
-        -D CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/make_dist
-        -D CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-        -D PACKAGE_PREFIX=${PACKAGE_PREFIX}
-        ${polyfill_flags}
-        -P ${PROJECT_SOURCE_DIR}/cmake/make_dist/MakeDistCheck.cmake
     )
-endif()
 
-if(ENABLE_UNINSTALL)
-    if(WIN32)
-        set(UNINSTALL_PROG "uninstall.cmd")
-    else()
-        set(UNINSTALL_PROG "uninstall.sh")
+    if(NOT(TARGET dist OR TARGET distcheck))
+        add_custom_target(dist DEPENDS ${DIST_FILE})
+
+        # Ensure distcheck inherits polyfill library selection.
+        set(polyfill_flags "")
+
+        if(NOT "${CMAKE_CXX_STANDARD}" STREQUAL "")
+            list(APPEND polyfill_flags "-DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}")
+        endif()
+
+        if(NOT "${BSONCXX_POLY_USE_IMPLS}" STREQUAL "")
+            list(APPEND polyfill_flags "-DBSONCXX_POLY_USE_IMPLS=${BSONCXX_POLY_USE_IMPLS}")
+        endif()
+
+        if(NOT "${BSONCXX_POLY_USE_STD}" STREQUAL "")
+            list(APPEND polyfill_flags "-DBSONCXX_POLY_USE_STD=${BSONCXX_POLY_USE_STD}")
+        endif()
+
+        add_custom_target(distcheck DEPENDS dist
+            COMMAND ${CMAKE_COMMAND}
+            -D CMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake/make_dist
+            -D CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
+            -D PACKAGE_PREFIX=${PACKAGE_PREFIX}
+            ${polyfill_flags}
+            -P ${PROJECT_SOURCE_DIR}/cmake/make_dist/MakeDistCheck.cmake
+        )
     endif()
 
-    set(UNINSTALL_PROG_DIR "${CMAKE_INSTALL_DATADIR}/mongo-cxx-driver")
+    if(ENABLE_UNINSTALL)
+        if(WIN32)
+            set(UNINSTALL_PROG "uninstall.cmd")
+        else()
+            set(UNINSTALL_PROG "uninstall.sh")
+        endif()
 
-    # Create uninstall program and associated uninstall target
-    #
-    # This needs to be last (after all other add_subdirectory calls) to ensure
-    # that the generated uninstall program is complete and correct
-    add_subdirectory(generate_uninstall)
+        set(UNINSTALL_PROG_DIR "${CMAKE_INSTALL_DATADIR}/mongo-cxx-driver")
+
+        # Create uninstall program and associated uninstall target
+        #
+        # This needs to be last (after all other add_subdirectory calls) to ensure
+        # that the generated uninstall program is complete and correct
+        add_subdirectory(generate_uninstall)
+    endif()
 endif()
 
 # Spit out some information regarding the generated build system

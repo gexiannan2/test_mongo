@@ -9,7 +9,6 @@
       "binaryDir": "${sourceDir}/build/vs2026-x64-d",
       "cacheVariables": {
         "CMAKE_GENERATOR_INSTANCE": "C:/Program Files/Microsoft Visual Studio/18/Insiders",
-        "CMAKE_PREFIX_PATH": "${sourceDir}/third_party/mongodb",
         "BUILD_TESTING": "ON"
       }
     },
@@ -25,7 +24,6 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_PREFIX_PATH": "${sourceDir}/third_party/mongodb/linux-x64",
         "BUILD_TESTING": "ON"
       }
     }

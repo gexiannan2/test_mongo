@@ -1,6 +1,12 @@
 # MongoStandalone
 
 与 `DBServer` 业务隔离的 MongoDB C++ 访问与本地 CRUD 验证工程。
+MongoDB C Driver 与 C++ Driver 均以仓库内源码直接编译为静态目标；不使用 vcpkg、
+不依赖预编译 MongoDB DLL/SO。
+
+当前内网版本固定关闭 MongoDB 驱动 TLS、SASL、SRV、测试、示例与文档目标，不引入
+OpenSSL。MongoDB 驱动源码只在构建阶段生成内部静态目标，最终游戏服不需要分发
+MongoDB 的 DLL 或 SO。
 
 依赖版本：
 
@@ -11,7 +17,6 @@
 ## 构建
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvars64.bat" && powershell -ExecutionPolicy Bypass -File scripts\bootstrap_mongodb.ps1'
 cmake --preset windows-vs2026-x64
 cmake --build --preset windows-vs2026-x64-release
 ctest --preset windows-vs2026-x64-release
@@ -24,13 +29,11 @@ ctest --preset windows-vs2026-x64-release
 4.2 的 Visual Studio 2026 生成器使用的新解决方案格式，可直接在 Visual Studio
 2026 中打开，并以 `Release|x64` 构建。
 
-Linux x64 使用独立的依赖安装目录，避免与 Windows 的 DLL/LIB 混用：
+Linux x64 直接使用仓库内的驱动源码构建静态目标：
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git libssl-dev libsasl2-dev
-chmod +x scripts/bootstrap_mongodb_linux.sh
-./scripts/bootstrap_mongodb_linux.sh
+sudo apt-get install -y build-essential cmake
 cmake --preset linux-gcc-x64
 cmake --build --preset linux-gcc-x64-release
 ctest --preset linux-gcc-x64-release
@@ -101,9 +104,10 @@ $env:MONGO_WAIT_QUEUE_TIMEOUT_MS = "200"
 由 `MONGO_WAIT_QUEUE_TIMEOUT_MS` 限制，应用层并发由 `MONGO_MAX_IN_FLIGHT` 背压
 限制；可通过 `MongoClient::Metrics()` 获取提交、完成、失败、拒绝和活动请求计数。
 
-生产环境必须使用三节点副本集、认证、TLS、`majority + journal` 写关注。设置
-`MONGO_ENV=production` 后，程序会拒绝不满足这些条件的配置。完整部署模板、环境变量
-和 10～30 分钟压测命令见 [PRODUCTION.md](docs/PRODUCTION.md)。
+生产环境必须使用三节点副本集、认证、`majority + journal` 写关注。TLS 由网络边界决定：
+当前受信任内网保持关闭；跨网段、跨机房或有合规要求时才重新以 TLS 构建驱动并设置
+`MONGO_TLS=true`、`MONGO_REQUIRE_TLS=true`。完整部署模板、环境变量和 10～30 分钟压测命令
+见 [PRODUCTION.md](docs/PRODUCTION.md)。
 
 ## 玩家异步投递
 

@@ -18,14 +18,6 @@ foreach(target IN LISTS mongo_test_targets)
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    if(WIN32)
-        add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_RUNTIME_DLLS:${target}>
-                $<TARGET_FILE_DIR:${target}>
-            COMMAND_EXPAND_LISTS
-        )
-    endif()
 endforeach()
 
 add_test(NAME mongo.crud COMMAND mongo_tests)

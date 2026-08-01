@@ -94,6 +94,7 @@ MongoConfig MongoConfig::FromEnvironment()
     config.retryWrites = ReadBoolean("MONGO_RETRY_WRITES", true);
     config.journal = ReadBoolean("MONGO_JOURNAL", false);
     config.tls = ReadBoolean("MONGO_TLS", false);
+    config.requireTls = ReadBoolean("MONGO_REQUIRE_TLS", false);
     config.production = ReadEnvironment("MONGO_ENV", "development") == "production";
     config.Validate();
     return config;
@@ -127,12 +128,12 @@ void MongoConfig::Validate() const
     {
         throw std::invalid_argument("MONGO_WRITE_CONCERN 只能是 1 或 majority");
     }
+    if (requireTls && !tls)
+    {
+        throw std::invalid_argument("当前部署策略要求设置 MONGO_TLS=true");
+    }
     if (production)
     {
-        if (!tls)
-        {
-            throw std::invalid_argument("生产环境必须设置 MONGO_TLS=true");
-        }
         if (uri.find("directConnection=true") != std::string::npos)
         {
             throw std::invalid_argument("生产环境不能使用 directConnection=true");

@@ -1,3 +1,9 @@
 /build/
 /results/
 /third_party/build/
+
+# VS 的 Linux 远程同步会错误地将第三方源码中的 build/cmake 当成构建缓存。
+# 该目录实际包含 MongoDB C Driver 配置所需的 CMake 模块，必须随源码同步。
+!/third_party/src/mongo-c-driver/build/
+!/third_party/src/mongo-c-driver/build/cmake/
+!/third_party/src/mongo-c-driver/build/cmake/**

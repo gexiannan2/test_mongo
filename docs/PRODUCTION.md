@@ -7,14 +7,19 @@
 
 这只是客户端基础能力。只有完成下列部署和压测验收后，才能称为生产可用。
 
-## 1. 副本集、认证和 TLS
+## 1. 副本集、认证与网络边界
 
-使用三个独立故障域的 MongoDB 节点；每个节点启用认证、内部 keyfile、TLS 和
+使用三个独立故障域的 MongoDB 节点；每个节点启用认证、内部 keyfile 和
 WiredTiger journal。配置模板见 `deploy/replica-set/mongod-node.conf.template`，
 副本集初始化脚本见 `deploy/replica-set/init-replica-set.js`。
 
 不要提交密码、keyfile 或证书。由部署系统把它们以受限文件或密钥管理服务注入。
 业务账号应仅拥有所需数据库和集合的最小权限。
+
+当前版本面向受信任、隔离的内网，驱动以 `ENABLE_SSL=OFF` 编译，默认不启用 TLS，
+也不引入 OpenSSL。若连接会跨越不可信网络、跨机房公网链路，或合规明确要求传输加密，
+必须重新以 TLS 支持构建驱动，并在部署中设置 `MONGO_TLS=true` 与
+`MONGO_REQUIRE_TLS=true`。
 
 生产程序必须显式设置以下环境变量。URI 中的三个主机必须是可用的副本集节点，
 不要带 `directConnection=true`。
@@ -23,7 +28,8 @@ WiredTiger journal。配置模板见 `deploy/replica-set/mongod-node.conf.templa
 $env:MONGO_ENV = "production"
 $env:MONGO_URI = "mongodb://APP_USER:URL_ENCODED_PASSWORD@mongo-01.internal.example:27017,mongo-02.internal.example:27017,mongo-03.internal.example:27017/?replicaSet=rs0&authSource=admin"
 $env:MONGO_DATABASE = "game"
-$env:MONGO_TLS = "true"
+$env:MONGO_TLS = "false"
+$env:MONGO_REQUIRE_TLS = "false"
 $env:MONGO_WRITE_CONCERN = "majority"
 $env:MONGO_JOURNAL = "true"
 $env:MONGO_RETRY_WRITES = "true"
@@ -34,8 +40,9 @@ $env:MONGO_WAIT_QUEUE_TIMEOUT_MS = "200"
 $env:MONGO_WRITE_CONCERN_TIMEOUT_MS = "5000"
 ```
 
-`MONGO_ENV=production` 会拒绝无 TLS、单节点直连、无认证 URI、非 majority 写关注
-和未启用 journal 的配置，防止将本地开发参数误带到线上。
+`MONGO_ENV=production` 会拒绝单节点直连、无认证 URI、非 majority 写关注和未启用
+journal 的配置。`MONGO_REQUIRE_TLS=true` 会额外拒绝未启用 TLS 的配置，避免将跨网络
+部署的安全参数误带到线上。
 
 ## 2. 压测验收
 
