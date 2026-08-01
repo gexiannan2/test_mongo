@@ -100,21 +100,28 @@ void SavePlayerEverySecond(
 上例中的单次 `UpdateOne` 在 MongoDB 工作线程内仍是同步的；异步的是业务线程到
 MongoDB 工作线程的投递过程。
 
+通用 `Post()` 的闭包会延后执行，因此不能捕获 `Player&`、临时对象引用、已经可能析构的
+`this` 或裸指针。应像示例一样捕获值语义快照；错误回调会由多个 MongoDB 工作线程并发
+调用，回调内访问共享状态时必须自行同步。
+
 ## 指标与关闭
 
 ```cpp
 const auto metrics = dispatcher.Metrics();
 // posted、completed、failed、rejected、queued、active
 
-// 仅用于测试或优雅停服前检查，不能在 MongoDB 工作线程自身调用 Stop。
+// 先停止业务投递，再请求调度器拒绝新任务并排空已有任务。
+dispatcher.RequestStop();
 if (!dispatcher.WaitForIdle(std::chrono::seconds(10))) {
     // 记录仍未排空的任务；不要把关键资产数据直接丢弃。
 }
 dispatcher.Stop();
 ```
 
-`Stop()` 先拒绝新任务，再排空已接受任务并等待工作线程退出。单个 MongoDB 请求的
-最长阻塞时间仍受 `MONGO_SOCKET_TIMEOUT_MS` 等连接配置限制。
+`RequestStop()` 可安全地从任务或错误回调中调用，只请求停止，不等待线程回收。
+`Stop()` 先拒绝新任务，再排空已接受任务并等待工作线程退出；若从 MongoDB 工作线程
+调用，它同样只请求停止以避免自身 `join`。调度器对象的销毁必须由外部线程执行。单个
+MongoDB 请求的最长阻塞时间仍受 `MONGO_SOCKET_TIMEOUT_MS` 等连接配置限制。
 
 ## 当前边界
 

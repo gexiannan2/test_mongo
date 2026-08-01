@@ -91,6 +91,7 @@ bool AsyncMongoDispatcher::Post(std::int64_t playerId, Task task)
         worker.queue.push_back({playerId, std::move(task)});
         posted_.fetch_add(1, std::memory_order_relaxed);
         queued_.fetch_add(1, std::memory_order_relaxed);
+        pending_.fetch_add(1, std::memory_order_release);
     }
     worker.condition.notify_one();
     return true;
@@ -104,15 +105,14 @@ bool AsyncMongoDispatcher::WaitForIdle(std::chrono::milliseconds timeout)
     }
     std::unique_lock<std::mutex> lock(idleMutex_);
     return idleCondition_.wait_for(lock, timeout, [this]() {
-        return queued_.load(std::memory_order_acquire) == 0 &&
-            active_.load(std::memory_order_acquire) == 0;
+        return pending_.load(std::memory_order_acquire) == 0;
     });
 }
 
-void AsyncMongoDispatcher::Stop()
+void AsyncMongoDispatcher::RequestStop()
 {
     std::lock_guard<std::mutex> lifecycleLock(lifecycleMutex_);
-    if (stopped_)
+    if (stopRequested_)
     {
         return;
     }
@@ -126,14 +126,59 @@ void AsyncMongoDispatcher::Stop()
         }
         worker->condition.notify_one();
     }
+    stopRequested_ = true;
+}
+
+void AsyncMongoDispatcher::Stop()
+{
+    RequestStop();
+
+    const auto currentThreadId = std::this_thread::get_id();
     for (const auto& worker : workers_)
     {
-        if (worker->thread.joinable())
+        if (worker->thread.get_id() == currentThreadId)
         {
-            worker->thread.join();
+            // 工作线程不能 join 自身；外部线程或析构函数稍后负责回收线程对象。
+            return;
         }
     }
+
+    std::unique_lock<std::mutex> lifecycleLock(lifecycleMutex_);
+    while (joining_)
+    {
+        lifecycleCondition_.wait(lifecycleLock, [this]() { return stopped_ || !joining_; });
+    }
+    if (stopped_)
+    {
+        return;
+    }
+    joining_ = true;
+    lifecycleLock.unlock();
+
+    try
+    {
+        for (const auto& worker : workers_)
+        {
+            if (worker->thread.joinable())
+            {
+                worker->thread.join();
+            }
+        }
+    }
+    catch (...)
+    {
+        lifecycleLock.lock();
+        joining_ = false;
+        lifecycleLock.unlock();
+        lifecycleCondition_.notify_all();
+        throw;
+    }
+
+    lifecycleLock.lock();
     stopped_ = true;
+    joining_ = false;
+    lifecycleLock.unlock();
+    lifecycleCondition_.notify_all();
 }
 
 AsyncMongoDispatcherMetrics AsyncMongoDispatcher::Metrics() const noexcept
@@ -189,6 +234,7 @@ void AsyncMongoDispatcher::RunWorker(Worker& worker) noexcept
         }
 
         active_.fetch_sub(1, std::memory_order_relaxed);
+        pending_.fetch_sub(1, std::memory_order_release);
         idleCondition_.notify_all();
     }
 }

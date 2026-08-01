@@ -113,6 +113,55 @@ std::int64_t ParsePositiveInt64(const std::string& value, const char* option)
     }
 }
 
+std::uint64_t CeilDivide(std::uint64_t value, std::uint64_t divisor)
+{
+    return value / divisor + (value % divisor == 0 ? 0 : 1);
+}
+
+std::uint64_t TargetOperations(std::uint64_t targetQps, std::chrono::seconds duration)
+{
+    const auto seconds = static_cast<std::uint64_t>(duration.count());
+    if (targetQps > std::numeric_limits<std::uint64_t>::max() / seconds)
+    {
+        throw std::invalid_argument("QPS 与时长的乘积超出允许范围");
+    }
+
+    const auto operations = targetQps * seconds;
+    constexpr std::uint64_t kNanosecondsPerSecond = 1000000000ULL;
+    if (operations > std::numeric_limits<std::uint64_t>::max() / kNanosecondsPerSecond)
+    {
+        throw std::invalid_argument("压测请求数过大，无法安全计算投递时间");
+    }
+    return operations;
+}
+
+void ValidateDuration(std::chrono::seconds duration, const char* option)
+{
+    constexpr std::int64_t kNanosecondsPerSecond = 1000000000LL;
+    if (duration.count() > std::numeric_limits<std::int64_t>::max() / kNanosecondsPerSecond)
+    {
+        throw std::invalid_argument(std::string(option) + " 过大，无法安全表示为纳秒");
+    }
+}
+
+void ValidateOptions(const Options& options)
+{
+    ValidateDuration(options.duration, "--duration");
+    if (options.warmup.count() > 0)
+    {
+        ValidateDuration(options.warmup, "--warmup");
+    }
+
+    for (const auto qps : options.qps)
+    {
+        static_cast<void>(TargetOperations(qps, options.duration));
+        if (options.warmup.count() > 0)
+        {
+            static_cast<void>(TargetOperations(qps, options.warmup));
+        }
+    }
+}
+
 Options ParseOptions(int argc, char* argv[])
 {
     Options options;
@@ -229,6 +278,7 @@ Options ParseOptions(int argc, char* argv[])
     {
         throw std::invalid_argument("--qps 无效");
     }
+    ValidateOptions(options);
     return options;
 }
 
@@ -384,12 +434,12 @@ Metrics RunScenario(mongo_standalone::MongoClient& client,
                     const Options& options, BenchmarkMode mode, std::uint64_t targetQps)
 {
     Metrics metrics;
-    metrics.targetOperations = targetQps * static_cast<std::uint64_t>(options.duration.count());
+    metrics.targetOperations = TargetOperations(targetQps, options.duration);
     constexpr std::uint64_t kMaxLatencySamples = 1000000;
     const std::uint64_t latencySamplePeriod = std::max<std::uint64_t>(
-        1, (metrics.targetOperations + kMaxLatencySamples - 1) / kMaxLatencySamples);
+        1, CeilDivide(metrics.targetOperations, kMaxLatencySamples));
     const std::uint64_t expectedLatencySamples =
-        (metrics.targetOperations + latencySamplePeriod - 1) / latencySamplePeriod;
+        CeilDivide(metrics.targetOperations, latencySamplePeriod);
     std::atomic<std::uint64_t> nextOperation{0};
     std::atomic<std::uint64_t> completed{0};
     std::atomic<std::uint64_t> failed{0};
@@ -401,7 +451,7 @@ Metrics RunScenario(mongo_standalone::MongoClient& client,
 
     for (std::size_t worker = 0; worker < options.workers; ++worker)
     {
-        threads.emplace_back([&]() {
+        threads.emplace_back([&, worker]() {
             auto& latencies = workerLatencies[worker];
             latencies.reserve(static_cast<std::size_t>(
                 expectedLatencySamples / options.workers + 1));
@@ -485,12 +535,12 @@ Metrics RunAsyncScenario(const mongo_standalone::MongoConfig& config,
                          std::uint64_t targetQps)
 {
     Metrics metrics;
-    metrics.targetOperations = targetQps * static_cast<std::uint64_t>(options.duration.count());
+    metrics.targetOperations = TargetOperations(targetQps, options.duration);
     constexpr std::uint64_t kMaxLatencySamples = 100000;
     const std::uint64_t latencySamplePeriod = std::max<std::uint64_t>(
-        1, (metrics.targetOperations + kMaxLatencySamples - 1) / kMaxLatencySamples);
+        1, CeilDivide(metrics.targetOperations, kMaxLatencySamples));
     const std::uint64_t expectedLatencySamples =
-        (metrics.targetOperations + latencySamplePeriod - 1) / latencySamplePeriod;
+        CeilDivide(metrics.targetOperations, latencySamplePeriod);
     std::atomic<std::uint64_t> nextOperation{0};
     std::atomic<std::uint64_t> accepted{0};
     std::atomic<std::uint64_t> rejected{0};

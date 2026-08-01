@@ -6,6 +6,7 @@
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/builder/basic/kvp.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -191,6 +192,90 @@ void RunBackpressureTest()
             "背压测试拒绝或失败计数不正确");
 }
 
+void RunIdleAndStopReentryTest()
+{
+    auto config = mongo_standalone::MongoConfig::FromEnvironment();
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool taskStarted = false;
+    bool releaseTask = false;
+    std::atomic<bool> stopReturned{false};
+
+    mongo_standalone::AsyncMongoDispatcher dispatcher(
+        config, {.workerCount = 1, .maxQueuedTasksPerWorker = 4});
+    Require(dispatcher.Post(1, [&](mongo_standalone::MongoClient&) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            taskStarted = true;
+        }
+        condition.notify_one();
+
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            condition.wait(lock, [&]() { return releaseTask; });
+        }
+
+        // 工作线程内调用 Stop 只能请求停止，不能尝试 join 自身。
+        dispatcher.Stop();
+        stopReturned.store(true, std::memory_order_release);
+    }), "停止重入测试任务投递失败");
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        Require(condition.wait_for(lock, std::chrono::seconds(2), [&]() {
+                    return taskStarted;
+                }),
+                "停止重入测试工作线程没有启动");
+    }
+    Require(!dispatcher.WaitForIdle(std::chrono::milliseconds(50)),
+            "活动任务执行期间 WaitForIdle 不应提前返回");
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        releaseTask = true;
+    }
+    condition.notify_one();
+
+    Require(dispatcher.WaitForIdle(std::chrono::seconds(5)),
+            "停止重入测试任务没有排空");
+    Require(stopReturned.load(std::memory_order_acquire),
+            "工作线程内调用 Stop 没有正常返回");
+    dispatcher.Stop();
+
+    const auto metrics = dispatcher.Metrics();
+    Require(metrics.posted == 1 && metrics.completed == 1 && metrics.failed == 0,
+            "停止重入测试任务状态不正确");
+}
+
+void RunErrorHandlerStopReentryTest()
+{
+    auto config = mongo_standalone::MongoConfig::FromEnvironment();
+    mongo_standalone::AsyncMongoDispatcher* dispatcherPointer = nullptr;
+    std::atomic<bool> handlerReturned{false};
+
+    mongo_standalone::AsyncMongoDispatcher dispatcher(
+        config,
+        {.workerCount = 1, .maxQueuedTasksPerWorker = 4},
+        [&](std::int64_t, std::exception_ptr) {
+            dispatcherPointer->Stop();
+            handlerReturned.store(true, std::memory_order_release);
+        });
+    dispatcherPointer = &dispatcher;
+
+    Require(dispatcher.Post(1, [](mongo_standalone::MongoClient&) {
+        throw std::runtime_error("用于验证错误回调停止重入的预期异常");
+    }), "错误回调停止重入测试任务投递失败");
+    Require(dispatcher.WaitForIdle(std::chrono::seconds(5)),
+            "错误回调停止重入测试任务没有排空");
+    Require(handlerReturned.load(std::memory_order_acquire),
+            "错误回调中调用 Stop 没有正常返回");
+    dispatcher.Stop();
+
+    const auto metrics = dispatcher.Metrics();
+    Require(metrics.posted == 1 && metrics.completed == 0 && metrics.failed == 1,
+            "错误回调停止重入测试任务状态不正确");
+}
+
 void RunPlayerStorageTest()
 {
     auto config = mongo_standalone::MongoConfig::FromEnvironment();
@@ -214,6 +299,7 @@ void RunPlayerStorageTest()
     snapshot.autoPick = true;
 
     Require(storage.PostSave(snapshot), "玩家快照投递失败");
+    storage.RequestStop();
     Require(storage.WaitForIdle(std::chrono::seconds(10)), "玩家快照没有在超时前落库");
     storage.Stop();
 
@@ -245,6 +331,8 @@ int main()
     {
         RunAffinityAndPersistenceTest();
         RunBackpressureTest();
+        RunIdleAndStopReentryTest();
+        RunErrorHandlerStopReentryTest();
         RunPlayerStorageTest();
         std::cout << "MongoDB async dispatcher integration test passed\n";
         return 0;

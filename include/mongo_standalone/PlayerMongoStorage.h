@@ -66,6 +66,7 @@ public:
     bool PostSave(PlayerSnapshot snapshot);
 
     bool WaitForIdle(std::chrono::milliseconds timeout);
+    void RequestStop();
     void Stop();
     AsyncMongoDispatcherMetrics Metrics() const noexcept;
 

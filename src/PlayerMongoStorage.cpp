@@ -85,6 +85,11 @@ bool PlayerMongoStorage::WaitForIdle(std::chrono::milliseconds timeout)
     return dispatcher_.WaitForIdle(timeout);
 }
 
+void PlayerMongoStorage::RequestStop()
+{
+    dispatcher_.RequestStop();
+}
+
 void PlayerMongoStorage::Stop()
 {
     dispatcher_.Stop();
