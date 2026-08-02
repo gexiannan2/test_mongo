@@ -1,6 +1,6 @@
-#include "mongo_standalone/MongoClient.h"
-#include "mongo_standalone/MongoConfig.h"
-#include "mongo_standalone/MongoError.h"
+#include "MongoClient.h"
+#include "MongoConfig.h"
+#include "MongoError.h"
 
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/builder/basic/kvp.hpp>

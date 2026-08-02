@@ -1,4 +1,4 @@
-#include "mongo_standalone/PlayerMongoStorage.h"
+#include "PlayerMongoStorage.h"
 
 #include <bsoncxx/builder/basic/array.hpp>
 #include <bsoncxx/builder/basic/document.hpp>

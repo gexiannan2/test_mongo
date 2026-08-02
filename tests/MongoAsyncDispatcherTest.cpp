@@ -1,7 +1,7 @@
-#include "mongo_standalone/AsyncMongoDispatcher.h"
-#include "mongo_standalone/MongoClient.h"
-#include "mongo_standalone/MongoConfig.h"
-#include "mongo_standalone/PlayerMongoStorage.h"
+#include "AsyncMongoDispatcher.h"
+#include "MongoClient.h"
+#include "MongoConfig.h"
+#include "PlayerMongoStorage.h"
 
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/builder/basic/kvp.hpp>

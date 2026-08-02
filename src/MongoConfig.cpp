@@ -1,4 +1,4 @@
-#include "mongo_standalone/MongoConfig.h"
+#include "MongoConfig.h"
 
 #include <climits>
 #include <cstdint>

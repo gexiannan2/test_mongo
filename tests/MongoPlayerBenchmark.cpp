@@ -1,6 +1,6 @@
-#include "mongo_standalone/AsyncMongoDispatcher.h"
-#include "mongo_standalone/MongoClient.h"
-#include "mongo_standalone/MongoConfig.h"
+#include "AsyncMongoDispatcher.h"
+#include "MongoClient.h"
+#include "MongoConfig.h"
 
 #include <bsoncxx/builder/basic/array.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
